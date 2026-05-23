@@ -203,6 +203,30 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Medical image project artifacts and sensitive data
+data/raw/*
+data/interim/*
+data/processed/*
+data/external/*
+models/checkpoints/*
+models/exports/*
+outputs/logs/*
+outputs/reports/*
+outputs/figures/*
+*.ckpt
+*.pth
+*.pt
+
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+!models/checkpoints/.gitkeep
+!models/exports/.gitkeep
+!outputs/logs/.gitkeep
+!outputs/reports/.gitkeep
+!outputs/figures/.gitkeep
+
 # Ruff stuff:
 .ruff_cache/
 
