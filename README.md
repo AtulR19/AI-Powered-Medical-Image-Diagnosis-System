@@ -120,6 +120,16 @@ Run the Streamlit upload dashboard:
 & .\.venv\Scripts\streamlit.exe run dashboard\app.py
 ```
 
+## Grad-CAM Explainability
+
+Generate heatmap, overlay, confidence chart, and summary visualization:
+
+```powershell
+& .\.venv\Scripts\python.exe gradcam.py --checkpoint models\checkpoints\20260524-103930\best.pt --image "data\archive (1)\Testing\glioma\Te-gl_1.jpg" --output-dir outputs\gradcam\glioma_example
+```
+
+Saved files include `*_gradcam_heatmap.png`, `*_gradcam_overlay.png`, `*_confidence.png`, `*_gradcam_summary.png`, and `*_gradcam_metadata.json`.
+
 ## Notes
 
 - Keep patient data and large imaging files out of version control.

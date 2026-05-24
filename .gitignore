@@ -216,6 +216,7 @@ outputs/logs/*
 outputs/reports/*
 outputs/figures/*
 outputs/training/*
+outputs/gradcam/*
 *.ckpt
 *.pth
 *.pt
