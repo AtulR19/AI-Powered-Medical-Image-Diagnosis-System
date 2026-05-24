@@ -205,6 +205,8 @@ tempCodeRunnerFile.py
 
 # Medical image project artifacts and sensitive data
 data/raw/*
+data/archive*/
+data/*.zip
 data/interim/*
 data/processed/*
 data/external/*
