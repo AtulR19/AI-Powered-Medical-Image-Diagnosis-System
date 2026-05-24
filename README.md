@@ -95,6 +95,31 @@ View TensorBoard logs:
 & .\.venv\Scripts\tensorboard.exe --logdir outputs\training
 ```
 
+## Inference Pipeline
+
+Run prediction from the terminal:
+
+```powershell
+& .\.venv\Scripts\python.exe predict.py --checkpoint models\checkpoints\resnet50_run1\best.pt --image "data\archive (1)\Testing\glioma\Te-gl_1.jpg"
+```
+
+The prediction output includes `predicted_class`, `predicted_index`, `confidence`, and class-wise `probabilities`.
+
+Serve the upload API:
+
+```powershell
+$env:MODEL_CHECKPOINT="models\checkpoints\resnet50_run1\best.pt"
+& .\.venv\Scripts\uvicorn.exe src.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Then open `http://127.0.0.1:8000/docs` and use the `/predict` endpoint to upload an MRI image.
+
+Run the Streamlit upload dashboard:
+
+```powershell
+& .\.venv\Scripts\streamlit.exe run dashboard\app.py
+```
+
 ## Notes
 
 - Keep patient data and large imaging files out of version control.
