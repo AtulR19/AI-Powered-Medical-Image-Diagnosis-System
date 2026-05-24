@@ -322,12 +322,21 @@ def inject_styles() -> None:
 
 
 def get_env_value(keys: tuple[str, ...]) -> str:
-    """Read the first non-empty environment variable from a list of names."""
+    """Read the first non-empty checkpoint setting from env vars or Streamlit secrets."""
 
     for key in keys:
         value = os.environ.get(key, "").strip()
         if value:
             return value
+
+    for key in keys:
+        try:
+            value = str(st.secrets.get(key, "")).strip()
+        except (FileNotFoundError, KeyError, AttributeError):
+            value = ""
+        if value:
+            return value
+
     return ""
 
 
@@ -506,7 +515,8 @@ def render_sidebar() -> tuple[Path | None, str]:
     st.sidebar.title("Diagnosis Console")
     page = st.sidebar.radio("Page", ["Welcome", "Diagnosis", "Analytics", "History"], label_visibility="collapsed")
 
-    with st.sidebar.expander("Deployment model", expanded=True):
+    checkpoints = find_checkpoints()
+    with st.sidebar.expander("Model setup", expanded=not checkpoints):
         uploaded_checkpoint = st.file_uploader(
             "Upload checkpoint",
             type=[extension[1:] for extension in sorted(CHECKPOINT_EXTENSIONS)],
