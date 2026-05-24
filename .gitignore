@@ -228,6 +228,7 @@ outputs/dashboard/*
 !data/external/.gitkeep
 !models/checkpoints/.gitkeep
 !models/exports/.gitkeep
+!models/exports/default-brain-tumor-inference.pt
 !outputs/logs/.gitkeep
 !outputs/reports/.gitkeep
 !outputs/figures/.gitkeep

@@ -24,6 +24,7 @@ from PIL import Image
 HISTORY_PATH = PROJECT_ROOT / "outputs" / "dashboard" / "prediction_history.jsonl"
 GRADCAM_ROOT = PROJECT_ROOT / "outputs" / "gradcam" / "dashboard"
 DEPLOYED_CHECKPOINT_DIR = PROJECT_ROOT / "outputs" / "dashboard" / "checkpoints"
+DEFAULT_CHECKPOINT_PATH = PROJECT_ROOT / "models" / "exports" / "default-brain-tumor-inference.pt"
 SUPPORTED_IMAGE_TYPES = ["jpg", "jpeg", "png", "bmp", "tif", "tiff"]
 CHECKPOINT_EXTENSIONS = {".pt", ".pth", ".ckpt"}
 ENV_CHECKPOINT_KEYS = ("MODEL_CHECKPOINT", "CHECKPOINT_PATH", "STREAMLIT_MODEL_CHECKPOINT")
@@ -359,6 +360,9 @@ def find_checkpoints() -> list[Path]:
     ]
 
     checkpoints: list[Path] = []
+    if DEFAULT_CHECKPOINT_PATH.exists():
+        checkpoints.append(DEFAULT_CHECKPOINT_PATH)
+
     env_checkpoint = get_env_value(ENV_CHECKPOINT_KEYS)
     if env_checkpoint:
         env_path = normalize_checkpoint_path(env_checkpoint)
@@ -381,10 +385,18 @@ def find_checkpoints() -> list[Path]:
         if checkpoint.is_file():
             unique[str(checkpoint.resolve())] = checkpoint
 
+    default_key = str(DEFAULT_CHECKPOINT_PATH.resolve())
+    if default_key in unique:
+        default_checkpoint = unique.pop(default_key)
+        return [default_checkpoint, *sorted(unique.values(), key=lambda path: path.stat().st_mtime, reverse=True)]
+
     return sorted(unique.values(), key=lambda path: path.stat().st_mtime, reverse=True)
 
 
 def to_display_path(path: Path) -> str:
+    if path.resolve() == DEFAULT_CHECKPOINT_PATH.resolve():
+        return "Bundled model: Brain Tumor MRI"
+
     try:
         return str(path.relative_to(PROJECT_ROOT))
     except ValueError:
@@ -395,6 +407,8 @@ def resolve_checkpoint_path(selection: str, manual_path: str) -> Path | None:
     candidate = manual_path.strip() or selection
     if not candidate:
         return None
+    if candidate == "Bundled model: Brain Tumor MRI":
+        return DEFAULT_CHECKPOINT_PATH
     return normalize_checkpoint_path(candidate)
 
 

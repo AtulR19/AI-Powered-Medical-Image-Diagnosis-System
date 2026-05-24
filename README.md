@@ -38,7 +38,7 @@ medical-image-diagnosis-system/
 |-- configs/            # Training configuration files
 |-- dashboard/          # Streamlit dashboard
 |-- data/               # Local dataset storage, ignored by git
-|-- models/             # Checkpoints and exported models, ignored by git
+|-- models/             # Training checkpoints ignored by git; bundled inference model included
 |-- notebooks/          # EDA notebooks
 |-- outputs/            # Logs, reports, Grad-CAM outputs, ignored by git
 |-- src/
@@ -171,7 +171,13 @@ This creates:
 models/exports/<run_name>-inference.pt
 ```
 
-Host this exported `.pt` file once, then configure the deployed app to load it. Website visitors only upload MRI images; they do not need the model file.
+The deployed dashboard is preset to use:
+
+```text
+models/exports/default-brain-tumor-inference.pt
+```
+
+Website visitors only upload MRI images; they do not need the model file. To replace the bundled model, export a new checkpoint and copy it over `models/exports/default-brain-tumor-inference.pt`.
 
 ## Inference
 
@@ -233,14 +239,19 @@ Use the sidebar to select a checkpoint and device. Choose `auto` or `cuda` for G
 
 ## Deployment Notes
 
-Model checkpoints are intentionally ignored by git, so a deployed app will not automatically contain your local `models/checkpoints/<run_name>/best.pt` file.
+Training checkpoints are intentionally ignored by git, but the dashboard includes a preset inference model:
 
-The deployed server needs access to the trained model once. End users do not need to upload or install the model.
+```text
+models/exports/default-brain-tumor-inference.pt
+```
 
-To enable predictions after deployment, use one of these options:
+The deployed server uses this bundled model automatically. End users do not need to upload or install the model.
 
-- Recommended: upload `models/exports/<run_name>-inference.pt` to a GitHub Release, Hugging Face file, S3 bucket, or another direct-download host, then set `MODEL_CHECKPOINT_URL`
-- Upload `best.pt`, `latest.pt`, `.pth`, or `.ckpt` from the dashboard sidebar as an admin/manual setup step
+To change the model after deployment, use one of these options:
+
+- Select another checkpoint from the sidebar if it exists in the deployed runtime
+- Upload `best.pt`, `latest.pt`, `.pth`, or `.ckpt` from the sidebar as an admin/manual setup step
+- Upload `models/exports/<run_name>-inference.pt` to a GitHub Release, Hugging Face file, S3 bucket, or another direct-download host, then set `MODEL_CHECKPOINT_URL`
 - Set `MODEL_CHECKPOINT` to a checkpoint path that exists in the deployed runtime
 
 For Streamlit Cloud, add the URL in app secrets:
@@ -274,11 +285,12 @@ Tracked:
 - Config files
 - Notebook
 - README screenshots in `assets/`
+- Bundled inference model at `models/exports/default-brain-tumor-inference.pt`
 
 Ignored:
 
 - Raw datasets
-- Model checkpoints
+- Training checkpoints and non-default model exports
 - Generated Grad-CAM outputs
 - Training reports
 - Dashboard prediction history
