@@ -12,6 +12,7 @@ matplotlib
 seaborn
 tqdm
 PyYAML
+tensorboard
 fastapi
 uvicorn[standard]
 streamlit

@@ -67,6 +67,34 @@ print(labels.shape)  # torch.Size([32])
 
 The pipeline uses the provided `Testing` folder as the final holdout set and creates a stratified validation split from `Training`. Training images use Albumentations resizing, mild augmentation, normalization, and tensor conversion. Validation and test images use deterministic resizing, normalization, and tensor conversion.
 
+## Training Pipeline
+
+Run a quick offline smoke test first:
+
+```powershell
+& .\.venv\Scripts\python.exe train.py --dry-run --no-pretrained --batch-size 2
+```
+
+Train a ResNet50 transfer-learning baseline:
+
+```powershell
+& .\.venv\Scripts\python.exe train.py --config configs\brain_tumor_resnet50.yaml
+```
+
+Train an EfficientNet baseline:
+
+```powershell
+& .\.venv\Scripts\python.exe train.py --config configs\brain_tumor_efficientnet_b0.yaml
+```
+
+Training outputs are saved under `outputs/training/<run_name>/` and checkpoints under `models/checkpoints/<run_name>/`. The pipeline saves `best.pt`, `latest.pt`, `history.csv`, TensorBoard logs, test confusion matrix, and classification reports.
+
+View TensorBoard logs:
+
+```powershell
+& .\.venv\Scripts\tensorboard.exe --logdir outputs\training
+```
+
 ## Notes
 
 - Keep patient data and large imaging files out of version control.

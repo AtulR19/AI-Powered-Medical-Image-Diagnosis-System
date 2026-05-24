@@ -1,27 +1,8 @@
-"""Training entry point for the medical image diagnosis system."""
+"""Command-line entry point for brain tumor MRI model training."""
 
 from __future__ import annotations
 
-import argparse
-from pathlib import Path
-
-from src.training.trainer import run_training
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train a medical image diagnosis model.")
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="Optional path to a YAML training configuration file.",
-    )
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    run_training(config_path=args.config)
+from src.training.cli import main
 
 
 if __name__ == "__main__":

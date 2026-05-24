@@ -215,6 +215,7 @@ models/exports/*
 outputs/logs/*
 outputs/reports/*
 outputs/figures/*
+outputs/training/*
 *.ckpt
 *.pth
 *.pt
