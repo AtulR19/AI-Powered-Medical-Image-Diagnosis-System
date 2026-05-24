@@ -1,137 +1,248 @@
-# Medical Image Diagnosis System
+# AI-Powered Medical Image Diagnosis System
 
-A modular PyTorch project scaffold for building medical image diagnosis workflows, including preprocessing, model training, inference, explainability, API serving, and dashboard development.
+Professional PyTorch pipeline for brain tumor MRI classification with transfer learning, explainability, API serving, and a Streamlit dashboard.
+
+> This project is for research and educational decision support only. It is not a certified medical device and must not be used as a substitute for qualified clinical review.
+
+## Highlights
+
+- Brain Tumor MRI dataset exploration notebook
+- Modular PyTorch dataset and DataLoader pipeline
+- ResNet50 transfer learning and EfficientNet support
+- Train, validation, and test workflow
+- GPU support with CUDA-enabled PyTorch
+- Checkpoint saving, early stopping, scheduler, and TensorBoard logging
+- Inference CLI and FastAPI image upload endpoint
+- Grad-CAM heatmaps, overlays, confidence charts, and saved explainability outputs
+- Streamlit dashboard with upload, prediction, Grad-CAM, analytics, and prediction history
+
+## Dashboard Preview
+
+| Welcome | Diagnosis |
+|---|---|
+| <img src="assets/dashboard-welcome.png" alt="Dashboard welcome page" width="100%"> | <img src="assets/dashboard-diagnosis-upload.png" alt="MRI upload and diagnosis page" width="100%"> |
+
+| Prediction | Grad-CAM |
+|---|---|
+| <img src="assets/dashboard-prediction.png" alt="Prediction probability display" width="100%"> | <img src="assets/dashboard-gradcam.png" alt="Grad-CAM heatmap and overlay visualization" width="100%"> |
+
+| Analytics Summary | Confidence Trends |
+|---|---|
+| <img src="assets/dashboard-analytics-summary.png" alt="Analytics class distribution page" width="100%"> | <img src="assets/dashboard-analytics-trends.png" alt="Confidence trends and mean probability charts" width="100%"> |
 
 ## Project Structure
 
 ```text
 medical-image-diagnosis-system/
-|-- data/
-|   |-- raw/            # Original datasets
-|   |-- interim/        # Intermediate preprocessing outputs
-|   |-- processed/      # Model-ready datasets
-|   `-- external/       # External reference data
-|-- notebooks/          # Research, EDA, and experiment notebooks
-|-- models/
-|   |-- checkpoints/    # Training checkpoints
-|   `-- exports/        # Exported production models
-|-- outputs/
-|   |-- logs/           # Training and inference logs
-|   |-- reports/        # Evaluation reports
-|   `-- figures/        # Plots and explainability images
-|-- dashboard/          # Streamlit or dashboard UI code
+|-- assets/             # GitHub README screenshots
+|-- configs/            # Training configuration files
+|-- dashboard/          # Streamlit dashboard
+|-- data/               # Local dataset storage, ignored by git
+|-- models/             # Checkpoints and exported models, ignored by git
+|-- notebooks/          # EDA notebooks
+|-- outputs/            # Logs, reports, Grad-CAM outputs, ignored by git
 |-- src/
-|   |-- preprocessing/  # Dataset loading and transforms
-|   |-- training/       # Training loops and metrics
-|   |-- inference/      # Prediction utilities
-|   |-- explainability/ # Grad-CAM and attribution methods
-|   |-- utils/          # Config, logging, and shared helpers
-|   `-- api/            # FastAPI application
+|   |-- api/            # FastAPI app
+|   |-- explainability/ # Grad-CAM implementation
+|   |-- inference/      # Checkpoint loading and prediction
+|   |-- preprocessing/  # Dataset, transforms, DataLoaders
+|   |-- training/       # Models, training loop, metrics
+|   `-- utils/          # Config and logging helpers
+|-- check_dataloader.py
+|-- gradcam.py
+|-- predict.py
 |-- requirements.txt
-|-- README.md
+|-- run_dashboard.ps1
 `-- train.py
 ```
 
-## Quick Start
+## Setup
 
-```bash
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python train.py
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install --upgrade pip
+& .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-## Brain Tumor MRI DataLoader Pipeline
+If you have an NVIDIA GPU, install CUDA-enabled PyTorch wheels:
 
-```python
-from pathlib import Path
-
-from src.preprocessing import create_brain_tumor_dataloaders
-
-loaders = create_brain_tumor_dataloaders(
-    dataset_root=Path("data/archive (1)"),
-    image_size=224,
-    batch_size=32,
-    val_size=0.2,
-    num_workers=0,
-    seed=42,
-)
-
-print(loaders.class_to_idx)
-print(loaders.split_sizes)
-
-images, labels = next(iter(loaders.train))
-print(images.shape)  # torch.Size([32, 3, 224, 224])
-print(labels.shape)  # torch.Size([32])
+```powershell
+& .\.venv\Scripts\python.exe -m pip install --force-reinstall --no-deps torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
 ```
 
-The pipeline uses the provided `Testing` folder as the final holdout set and creates a stratified validation split from `Training`. Training images use Albumentations resizing, mild augmentation, normalization, and tensor conversion. Validation and test images use deterministic resizing, normalization, and tensor conversion.
+Verify CUDA:
 
-## Training Pipeline
+```powershell
+& .\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+```
 
-Run a quick offline smoke test first:
+## Dataset
+
+Expected Brain Tumor MRI layout:
+
+```text
+data/archive (1)/
+|-- Training/
+|   |-- glioma/
+|   |-- meningioma/
+|   |-- notumor/
+|   `-- pituitary/
+`-- Testing/
+    |-- glioma/
+    |-- meningioma/
+    |-- notumor/
+    `-- pituitary/
+```
+
+Dataset files are intentionally ignored by git.
+
+## EDA Notebook
+
+Open:
+
+```text
+notebooks/eda.ipynb
+```
+
+The notebook includes dataset overview, class distribution, sample images, dimensions analysis, preprocessing visualization, augmentation examples, and written observations.
+
+## DataLoader Smoke Test
+
+```powershell
+& .\.venv\Scripts\python.exe check_dataloader.py
+```
+
+Expected batch shape:
+
+```text
+torch.Size([8, 3, 224, 224])
+```
+
+## Training
+
+Dry run:
 
 ```powershell
 & .\.venv\Scripts\python.exe train.py --dry-run --no-pretrained --batch-size 2
 ```
 
-Train a ResNet50 transfer-learning baseline:
+Train ResNet50:
 
 ```powershell
-& .\.venv\Scripts\python.exe train.py --config configs\brain_tumor_resnet50.yaml
+& .\.venv\Scripts\python.exe train.py --config configs\brain_tumor_resnet50.yaml --run-name resnet50_run1
 ```
 
-Train an EfficientNet baseline:
+Train EfficientNet-B0:
 
 ```powershell
-& .\.venv\Scripts\python.exe train.py --config configs\brain_tumor_efficientnet_b0.yaml
+& .\.venv\Scripts\python.exe train.py --config configs\brain_tumor_efficientnet_b0.yaml --run-name efficientnet_b0_run1
 ```
 
-Training outputs are saved under `outputs/training/<run_name>/` and checkpoints under `models/checkpoints/<run_name>/`. The pipeline saves `best.pt`, `latest.pt`, `history.csv`, TensorBoard logs, test confusion matrix, and classification reports.
+Saved artifacts:
 
-View TensorBoard logs:
+```text
+models/checkpoints/<run_name>/best.pt
+models/checkpoints/<run_name>/latest.pt
+outputs/training/<run_name>/history.csv
+outputs/training/<run_name>/test_confusion_matrix.png
+outputs/training/<run_name>/test_classification_report.txt
+```
+
+TensorBoard:
 
 ```powershell
 & .\.venv\Scripts\tensorboard.exe --logdir outputs\training
 ```
 
-## Inference Pipeline
+## Inference
 
 Run prediction from the terminal:
 
 ```powershell
-& .\.venv\Scripts\python.exe predict.py --checkpoint models\checkpoints\resnet50_run1\best.pt --image "data\archive (1)\Testing\glioma\Te-gl_1.jpg"
+& .\.venv\Scripts\python.exe predict.py --checkpoint "models\checkpoints\<run_name>\best.pt" --image "data\archive (1)\Testing\glioma\Te-gl_1.jpg"
 ```
 
-The prediction output includes `predicted_class`, `predicted_index`, `confidence`, and class-wise `probabilities`.
+Example output:
 
-Serve the upload API:
+```json
+{
+  "predicted_class": "glioma",
+  "predicted_index": 0,
+  "confidence": 0.7431,
+  "probabilities": {
+    "glioma": 0.7431,
+    "meningioma": 0.0861,
+    "notumor": 0.0453,
+    "pituitary": 0.1255
+  }
+}
+```
+
+## Grad-CAM
+
+Generate heatmap, overlay, confidence chart, and summary image:
 
 ```powershell
-$env:MODEL_CHECKPOINT="models\checkpoints\resnet50_run1\best.pt"
+& .\.venv\Scripts\python.exe gradcam.py --checkpoint "models\checkpoints\<run_name>\best.pt" --image "data\archive (1)\Testing\glioma\Te-gl_1.jpg" --output-dir outputs\gradcam\glioma_example
+```
+
+Saved files:
+
+```text
+*_gradcam_heatmap.png
+*_gradcam_overlay.png
+*_confidence.png
+*_gradcam_summary.png
+*_gradcam_metadata.json
+```
+
+## Streamlit Dashboard
+
+Start the dashboard:
+
+```powershell
+.\run_dashboard.ps1
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8501
+```
+
+Use the sidebar to select a checkpoint and device. Choose `auto` or `cuda` for GPU inference when CUDA is available.
+
+## FastAPI Upload API
+
+```powershell
+$env:MODEL_CHECKPOINT="models\checkpoints\<run_name>\best.pt"
 & .\.venv\Scripts\uvicorn.exe src.api.app:app --host 127.0.0.1 --port 8000
 ```
 
-Then open `http://127.0.0.1:8000/docs` and use the `/predict` endpoint to upload an MRI image.
+Open:
 
-Run the Streamlit upload dashboard:
-
-```powershell
-& .\.venv\Scripts\streamlit.exe run dashboard\app.py
+```text
+http://127.0.0.1:8000/docs
 ```
 
-## Grad-CAM Explainability
+Use `/predict` to upload an MRI image and receive predicted class, confidence, and class probabilities.
 
-Generate heatmap, overlay, confidence chart, and summary visualization:
+## Git And Data Hygiene
 
-```powershell
-& .\.venv\Scripts\python.exe gradcam.py --checkpoint models\checkpoints\20260524-103930\best.pt --image "data\archive (1)\Testing\glioma\Te-gl_1.jpg" --output-dir outputs\gradcam\glioma_example
-```
+Tracked:
 
-Saved files include `*_gradcam_heatmap.png`, `*_gradcam_overlay.png`, `*_confidence.png`, `*_gradcam_summary.png`, and `*_gradcam_metadata.json`.
+- Source code
+- Config files
+- Notebook
+- README screenshots in `assets/`
 
-## Notes
+Ignored:
 
-- Keep patient data and large imaging files out of version control.
-- Store raw images in `data/raw/` and generated artifacts in `outputs/`.
-- Put reusable pipeline code under `src/` and exploratory work under `notebooks/`.
+- Raw datasets
+- Model checkpoints
+- Generated Grad-CAM outputs
+- Training reports
+- Dashboard prediction history
+- Virtual environments

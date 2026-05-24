@@ -237,6 +237,25 @@ def explain_image(
         device=device,
         image_size=image_size,
     )
+    return explain_with_predictor(
+        predictor=predictor,
+        image_path=image_path,
+        output_dir=output_dir,
+        target_class=target_class,
+        alpha=alpha,
+    )
+
+
+def explain_with_predictor(
+    predictor: BrainTumorPredictor,
+    image_path: str | Path | bytes | BinaryIO | Image.Image,
+    output_dir: str | Path = "outputs/gradcam",
+    target_class: str | int | None = None,
+    alpha: float = 0.4,
+    output_stem: str | None = None,
+) -> GradCAMOutput:
+    """Run prediction plus Grad-CAM using an already-loaded predictor."""
+
     prediction = predictor.predict(image_path)
 
     if target_class is None:
@@ -268,7 +287,7 @@ def explain_image(
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    stem = Path(image_path).stem if isinstance(image_path, (str, Path)) else "uploaded_image"
+    stem = output_stem or (Path(image_path).stem if isinstance(image_path, (str, Path)) else "uploaded_image")
 
     heatmap_path = output_path / f"{stem}_gradcam_heatmap.png"
     overlay_path = output_path / f"{stem}_gradcam_overlay.png"

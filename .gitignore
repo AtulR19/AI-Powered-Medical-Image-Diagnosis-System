@@ -217,6 +217,7 @@ outputs/reports/*
 outputs/figures/*
 outputs/training/*
 outputs/gradcam/*
+outputs/dashboard/*
 *.ckpt
 *.pth
 *.pt
