@@ -249,11 +249,56 @@ def inject_styles() -> None:
             border-radius: 6px;
             color: #dceaff;
         }
+        div[data-baseweb="input"],
+        div[data-baseweb="textarea"],
+        div[data-baseweb="select"] > div {
+            background: #0d1726 !important;
+            border-color: #314665 !important;
+            color: var(--ink) !important;
+        }
+        div[data-baseweb="input"] input,
+        div[data-baseweb="textarea"] textarea,
+        input,
+        textarea {
+            color: var(--ink) !important;
+            -webkit-text-fill-color: var(--ink) !important;
+            caret-color: var(--accent-strong) !important;
+        }
+        div[data-baseweb="input"] input::placeholder,
+        input::placeholder,
+        textarea::placeholder {
+            color: #9fb0c7 !important;
+            opacity: 1 !important;
+        }
+        [data-testid="InputInstructions"],
+        [data-testid="stCaptionContainer"],
+        [data-testid="stWidgetLabel"] p,
+        small {
+            color: #b8c7dc !important;
+        }
+        [data-testid="stExpander"] {
+            border-color: var(--border) !important;
+            background: rgba(11, 17, 28, 0.42) !important;
+        }
+        [data-testid="stFileUploader"] section {
+            background: #0d1726 !important;
+            border-color: #314665 !important;
+        }
+        [data-testid="stFileUploader"] section * {
+            color: var(--ink) !important;
+        }
         .stButton > button {
+            background: #12233a !important;
+            border: 1px solid #38547a !important;
             border-radius: 10px;
+            color: var(--ink) !important;
             min-height: 48px;
             font-weight: 760;
             transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+        }
+        .stButton > button[kind="primary"] {
+            background: linear-gradient(135deg, #2563eb, #0ea5e9) !important;
+            border-color: rgba(96, 165, 250, 0.70) !important;
         }
         .stButton > button:hover {
             transform: translateY(-1px);
@@ -315,6 +360,9 @@ def inject_styles() -> None:
         }
         .stAlert {
             border-radius: 10px;
+        }
+        div[data-testid="stAlert"] * {
+            color: var(--ink) !important;
         }
         </style>
         """,
@@ -465,6 +513,41 @@ def download_checkpoint(checkpoint_url: str) -> Path:
     return checkpoint_path
 
 
+def validate_checkpoint_url(checkpoint_url: str) -> str | None:
+    """Return a user-facing validation error for invalid checkpoint URLs."""
+
+    checkpoint_url = checkpoint_url.strip()
+    if not checkpoint_url:
+        return "Enter a direct checkpoint URL before loading."
+
+    lowered_url = checkpoint_url.lower()
+    placeholder_markers = (
+        "your-direct-download-link",
+        "your-direct-download-url",
+        "your-model-download-url",
+        "example.com",
+        "<",
+        ">",
+    )
+    if any(marker in lowered_url for marker in placeholder_markers):
+        return "That is an example URL. Replace it with a real direct download link to a .pt, .pth, or .ckpt file."
+
+    parsed_url = urlparse(checkpoint_url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        return "Use a full direct URL beginning with http:// or https://."
+
+    return None
+
+
+def format_checkpoint_url_error(error: Exception) -> str:
+    """Convert URL download failures into clear dashboard copy."""
+
+    return (
+        "Could not download the checkpoint. Use a real direct file link that opens the model file itself, "
+        f"not a webpage. Details: {error}"
+    )
+
+
 def is_cuda_available() -> bool:
     """Return whether the active PyTorch runtime can use CUDA."""
 
@@ -531,6 +614,9 @@ def render_sidebar() -> tuple[Path | None, str]:
 
     checkpoints = find_checkpoints()
     with st.sidebar.expander("Model setup", expanded=not checkpoints):
+        if DEFAULT_CHECKPOINT_PATH.exists():
+            st.caption("Bundled model is already active. Use these controls only when replacing it.")
+
         uploaded_checkpoint = st.file_uploader(
             "Upload checkpoint",
             type=[extension[1:] for extension in sorted(CHECKPOINT_EXTENSIONS)],
@@ -548,14 +634,20 @@ def render_sidebar() -> tuple[Path | None, str]:
         checkpoint_url = st.text_input(
             "Checkpoint URL",
             value=get_env_value(ENV_CHECKPOINT_URL_KEYS),
+            placeholder="https://host.com/path/model.pt",
             help="Optional direct URL to a .pt, .pth, or .ckpt file, such as a GitHub Release asset.",
         )
+        url_validation_error = validate_checkpoint_url(checkpoint_url) if checkpoint_url else None
         should_auto_download = (
             bool(checkpoint_url)
+            and url_validation_error is None
             and st.session_state.get("downloaded_checkpoint_url") != checkpoint_url
             and bool(get_env_value(ENV_CHECKPOINT_URL_KEYS))
         )
-        if st.button("Load checkpoint URL", use_container_width=True) or should_auto_download:
+        load_url_clicked = st.button("Load checkpoint URL", use_container_width=True)
+        if load_url_clicked and url_validation_error:
+            st.warning(url_validation_error)
+        elif load_url_clicked or should_auto_download:
             with st.spinner("Loading checkpoint..."):
                 try:
                     downloaded_checkpoint = download_checkpoint(checkpoint_url)
@@ -563,7 +655,7 @@ def render_sidebar() -> tuple[Path | None, str]:
                     st.session_state["downloaded_checkpoint_path"] = str(downloaded_checkpoint)
                     st.success(f"Loaded {downloaded_checkpoint.name}")
                 except (OSError, URLError, ValueError) as exc:
-                    st.error(f"Could not load checkpoint URL: {exc}")
+                    st.error(format_checkpoint_url_error(exc))
 
     checkpoints = find_checkpoints()
     checkpoint_labels = [to_display_path(path) for path in checkpoints]

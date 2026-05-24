@@ -260,6 +260,8 @@ For Streamlit Cloud, add the URL in app secrets:
 MODEL_CHECKPOINT_URL = "https://your-direct-download-link/model.pt"
 ```
 
+Replace that example with a real direct file URL. If the URL opens a web preview page instead of downloading the `.pt` file itself, the app cannot load it.
+
 The dashboard supports CPU inference. If your deployment provider does not attach an NVIDIA GPU, CUDA will show as CPU-only even if CUDA works on your local machine.
 
 ## FastAPI Upload API
