@@ -214,6 +214,18 @@ http://127.0.0.1:8501
 
 Use the sidebar to select a checkpoint and device. Choose `auto` or `cuda` for GPU inference when CUDA is available.
 
+## Deployment Notes
+
+Model checkpoints are intentionally ignored by git, so a deployed app will not automatically contain your local `models/checkpoints/<run_name>/best.pt` file.
+
+To enable predictions after deployment, use one of these options:
+
+- Upload `best.pt`, `latest.pt`, `.pth`, or `.ckpt` from the dashboard sidebar
+- Set `MODEL_CHECKPOINT` to a checkpoint path that exists in the deployed runtime
+- Set `MODEL_CHECKPOINT_URL` to a direct downloadable checkpoint URL, such as a GitHub Release asset
+
+The dashboard supports CPU inference. If your deployment provider does not attach an NVIDIA GPU, CUDA will show as CPU-only even if CUDA works on your local machine.
+
 ## FastAPI Upload API
 
 ```powershell

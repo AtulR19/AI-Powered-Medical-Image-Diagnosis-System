@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
+from urllib.error import URLError
+from urllib.parse import urlparse
+from urllib.request import urlopen
 from uuid import uuid4
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +23,11 @@ from PIL import Image
 
 HISTORY_PATH = PROJECT_ROOT / "outputs" / "dashboard" / "prediction_history.jsonl"
 GRADCAM_ROOT = PROJECT_ROOT / "outputs" / "gradcam" / "dashboard"
+DEPLOYED_CHECKPOINT_DIR = PROJECT_ROOT / "outputs" / "dashboard" / "checkpoints"
 SUPPORTED_IMAGE_TYPES = ["jpg", "jpeg", "png", "bmp", "tif", "tiff"]
+CHECKPOINT_EXTENSIONS = {".pt", ".pth", ".ckpt"}
+ENV_CHECKPOINT_KEYS = ("MODEL_CHECKPOINT", "CHECKPOINT_PATH", "STREAMLIT_MODEL_CHECKPOINT")
+ENV_CHECKPOINT_URL_KEYS = ("MODEL_CHECKPOINT_URL", "CHECKPOINT_URL")
 
 
 def inject_styles() -> None:
@@ -313,16 +321,58 @@ def inject_styles() -> None:
     )
 
 
+def get_env_value(keys: tuple[str, ...]) -> str:
+    """Read the first non-empty environment variable from a list of names."""
+
+    for key in keys:
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def normalize_checkpoint_path(path_value: str | Path) -> Path:
+    """Resolve local checkpoint paths relative to the project root."""
+
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path
+
+
 def find_checkpoints() -> list[Path]:
-    checkpoint_root = PROJECT_ROOT / "models" / "checkpoints"
-    if not checkpoint_root.exists():
-        return []
-    checkpoints = sorted(checkpoint_root.rglob("best.pt"), key=lambda path: path.stat().st_mtime, reverse=True)
-    checkpoints.extend(
-        path for path in sorted(checkpoint_root.rglob("latest.pt"), key=lambda path: path.stat().st_mtime, reverse=True)
-        if path not in checkpoints
-    )
-    return checkpoints
+    """Find local, uploaded, and deployment-provided checkpoint files."""
+
+    roots = [
+        PROJECT_ROOT / "models" / "checkpoints",
+        PROJECT_ROOT / "models" / "exports",
+        DEPLOYED_CHECKPOINT_DIR,
+    ]
+
+    checkpoints: list[Path] = []
+    env_checkpoint = get_env_value(ENV_CHECKPOINT_KEYS)
+    if env_checkpoint:
+        env_path = normalize_checkpoint_path(env_checkpoint)
+        if env_path.exists():
+            checkpoints.append(env_path)
+
+    preferred_names = ("best.pt", "latest.pt")
+    for root in roots:
+        if not root.exists():
+            continue
+
+        for name in preferred_names:
+            checkpoints.extend(root.rglob(name))
+
+        for extension in CHECKPOINT_EXTENSIONS:
+            checkpoints.extend(root.rglob(f"*{extension}"))
+
+    unique: dict[str, Path] = {}
+    for checkpoint in checkpoints:
+        if checkpoint.is_file():
+            unique[str(checkpoint.resolve())] = checkpoint
+
+    return sorted(unique.values(), key=lambda path: path.stat().st_mtime, reverse=True)
 
 
 def to_display_path(path: Path) -> str:
@@ -336,10 +386,71 @@ def resolve_checkpoint_path(selection: str, manual_path: str) -> Path | None:
     candidate = manual_path.strip() or selection
     if not candidate:
         return None
-    path = Path(candidate)
-    if not path.is_absolute():
-        path = PROJECT_ROOT / path
-    return path
+    return normalize_checkpoint_path(candidate)
+
+
+def clean_checkpoint_name(filename: str) -> str:
+    """Create a filesystem-safe checkpoint filename."""
+
+    name = Path(filename).name or "uploaded_checkpoint.pt"
+    return "".join(character if character.isalnum() or character in ".-_" else "_" for character in name)
+
+
+def persist_uploaded_checkpoint(uploaded_file) -> Path:
+    """Persist a Streamlit-uploaded checkpoint into the ephemeral deployment workspace."""
+
+    DEPLOYED_CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    checkpoint_bytes = uploaded_file.getvalue()
+    digest = sha256(checkpoint_bytes).hexdigest()[:12]
+    safe_name = clean_checkpoint_name(uploaded_file.name)
+    suffix = Path(safe_name).suffix.lower()
+    if suffix not in CHECKPOINT_EXTENSIONS:
+        suffix = ".pt"
+
+    stem = Path(safe_name).stem or "uploaded_checkpoint"
+    checkpoint_path = DEPLOYED_CHECKPOINT_DIR / f"{stem}-{digest}{suffix}"
+    if not checkpoint_path.exists():
+        checkpoint_path.write_bytes(checkpoint_bytes)
+    return checkpoint_path
+
+
+def download_checkpoint(checkpoint_url: str) -> Path:
+    """Download a checkpoint from a deployment-accessible URL."""
+
+    checkpoint_url = checkpoint_url.strip()
+    if not checkpoint_url:
+        raise ValueError("Checkpoint URL is empty.")
+
+    DEPLOYED_CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    parsed_url = urlparse(checkpoint_url)
+    suffix = Path(parsed_url.path).suffix.lower()
+    if suffix not in CHECKPOINT_EXTENSIONS:
+        suffix = ".pt"
+
+    digest = sha256(checkpoint_url.encode("utf-8")).hexdigest()[:12]
+    checkpoint_path = DEPLOYED_CHECKPOINT_DIR / f"downloaded-{digest}{suffix}"
+    if checkpoint_path.exists():
+        return checkpoint_path
+
+    with urlopen(checkpoint_url, timeout=120) as response, checkpoint_path.open("wb") as file:
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            file.write(chunk)
+
+    return checkpoint_path
+
+
+def is_cuda_available() -> bool:
+    """Return whether the active PyTorch runtime can use CUDA."""
+
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except ModuleNotFoundError:
+        return False
 
 
 @st.cache_resource(show_spinner=False)
@@ -395,6 +506,41 @@ def render_sidebar() -> tuple[Path | None, str]:
     st.sidebar.title("Diagnosis Console")
     page = st.sidebar.radio("Page", ["Welcome", "Diagnosis", "Analytics", "History"], label_visibility="collapsed")
 
+    with st.sidebar.expander("Deployment model", expanded=True):
+        uploaded_checkpoint = st.file_uploader(
+            "Upload checkpoint",
+            type=[extension[1:] for extension in sorted(CHECKPOINT_EXTENSIONS)],
+            accept_multiple_files=False,
+            help="Use this after deployment when local model checkpoint files are not included in the repo.",
+        )
+        if uploaded_checkpoint is not None:
+            try:
+                saved_checkpoint = persist_uploaded_checkpoint(uploaded_checkpoint)
+                st.session_state["uploaded_checkpoint_path"] = str(saved_checkpoint)
+                st.success(f"Loaded {saved_checkpoint.name}")
+            except OSError as exc:
+                st.error(f"Could not save uploaded checkpoint: {exc}")
+
+        checkpoint_url = st.text_input(
+            "Checkpoint URL",
+            value=get_env_value(ENV_CHECKPOINT_URL_KEYS),
+            help="Optional direct URL to a .pt, .pth, or .ckpt file, such as a GitHub Release asset.",
+        )
+        should_auto_download = (
+            bool(checkpoint_url)
+            and st.session_state.get("downloaded_checkpoint_url") != checkpoint_url
+            and bool(get_env_value(ENV_CHECKPOINT_URL_KEYS))
+        )
+        if st.button("Load checkpoint URL", use_container_width=True) or should_auto_download:
+            with st.spinner("Loading checkpoint..."):
+                try:
+                    downloaded_checkpoint = download_checkpoint(checkpoint_url)
+                    st.session_state["downloaded_checkpoint_url"] = checkpoint_url
+                    st.session_state["downloaded_checkpoint_path"] = str(downloaded_checkpoint)
+                    st.success(f"Loaded {downloaded_checkpoint.name}")
+                except (OSError, URLError, ValueError) as exc:
+                    st.error(f"Could not load checkpoint URL: {exc}")
+
     checkpoints = find_checkpoints()
     checkpoint_labels = [to_display_path(path) for path in checkpoints]
     default_selection = checkpoint_labels[0] if checkpoint_labels else ""
@@ -404,8 +550,18 @@ def render_sidebar() -> tuple[Path | None, str]:
         index=0 if checkpoint_labels else None,
         placeholder="No checkpoints found",
     )
-    manual_checkpoint = st.sidebar.text_input("Custom checkpoint", value="" if checkpoint_labels else default_selection)
-    device = st.sidebar.selectbox("Device", ["auto", "cpu", "cuda"], index=0)
+    manual_checkpoint = st.sidebar.text_input(
+        "Local checkpoint path",
+        value="" if checkpoint_labels else default_selection,
+        help="Use a path that exists inside this runtime, or upload/download a checkpoint above.",
+    )
+
+    device_options = ["auto", "cpu"]
+    if is_cuda_available():
+        device_options.append("cuda")
+    device = st.sidebar.selectbox("Device", device_options, index=0)
+    if not is_cuda_available():
+        st.sidebar.caption("CUDA is not available in this runtime. CPU inference is expected on most cloud deployments.")
 
     checkpoint_path = resolve_checkpoint_path(selected_checkpoint or "", manual_checkpoint)
     if checkpoint_path and checkpoint_path.exists():
@@ -424,17 +580,23 @@ def get_runtime_status() -> dict[str, str]:
 
         cuda_ready = torch.cuda.is_available()
         return {
-            "device": torch.cuda.get_device_name(0) if cuda_ready else "CPU",
+            "device": torch.cuda.get_device_name(0) if cuda_ready else "CPU runtime",
             "torch": torch.__version__,
-            "cuda": "Ready" if cuda_ready else "Unavailable",
+            "cuda": "Available" if cuda_ready else "CPU only",
+            "cuda_caption": "GPU acceleration active" if cuda_ready else "Expected on most hosted deployments",
         }
     except ModuleNotFoundError:
-        return {"device": "Unavailable", "torch": "Missing", "cuda": "Unavailable"}
+        return {
+            "device": "Unavailable",
+            "torch": "Missing",
+            "cuda": "Unavailable",
+            "cuda_caption": "Install PyTorch in the active runtime",
+        }
 
 
 def render_welcome_page(checkpoint_path: Path | None) -> None:
     status = get_runtime_status()
-    model_status = "Ready" if checkpoint_path and checkpoint_path.exists() else "Select checkpoint"
+    model_status = "Ready" if checkpoint_path and checkpoint_path.exists() else "Upload checkpoint"
     checkpoint_label = to_display_path(checkpoint_path) if checkpoint_path and checkpoint_path.exists() else "No checkpoint selected"
 
     st.markdown(
@@ -468,7 +630,7 @@ def render_welcome_page(checkpoint_path: Path | None) -> None:
             <div class="status-card">
                 <div class="status-label">CUDA</div>
                 <div class="status-value">{status["cuda"]}</div>
-                <div class="status-caption">GPU acceleration status</div>
+                <div class="status-caption">{status["cuda_caption"]}</div>
             </div>
             <div class="status-card">
                 <div class="status-label">PyTorch</div>
@@ -530,7 +692,24 @@ def render_diagnosis_page(checkpoint_path: Path | None) -> None:
     )
 
     if checkpoint_path is None or not checkpoint_path.exists():
-        st.error("Select a valid checkpoint before running prediction.")
+        st.warning("No model checkpoint is loaded.")
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="result-title">Load a trained model to enable prediction</div>
+                <p class="subtle">
+                    Deployment environments do not include your local checkpoint files unless you provide them.
+                    Upload a <code>.pt</code>, <code>.pth</code>, or <code>.ckpt</code> file in the sidebar,
+                    set <code>MODEL_CHECKPOINT</code> to a checkpoint path that exists in the runtime,
+                    or set <code>MODEL_CHECKPOINT_URL</code> to a direct downloadable checkpoint URL.
+                </p>
+                <p class="subtle">
+                    CUDA is optional. If the host has no GPU, the dashboard will run predictions on CPU.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         return
 
     uploaded_file = st.file_uploader(
